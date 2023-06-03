@@ -1,0 +1,24 @@
+server:
+  port: 8080
+  error:
+    include-message: always
+
+spring:
+  servlet:
+    multipart:
+      enabled: true
+      file-size-threshold: 1MB
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+aws:
+  region: ap-southeast-2
+  s3:
+    mock: false
+    bucket:
+      name: campidelli-file-storage-service-bucket
+      region: ap-southeast-2
+    upload:
+      maxThreads: 3
+      multipart:
+        threshold: 1000000 # 1MB
