@@ -1,6 +1,6 @@
 package campidelli.file.storage.controller;
 
-import campidelli.file.storage.service.FileRepositoryService;
+import campidelli.file.storage.service.S3FileRepositoryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -14,10 +14,10 @@ import java.io.InputStream;
 @RequestMapping("/v1/file")
 public class FileStorageController {
 
-    private final FileRepositoryService fileRepositoryService;
+    private final S3FileRepositoryService fileRepositoryService;
 
     @Autowired
-    public FileStorageController(FileRepositoryService fileRepositoryService) {
+    public FileStorageController(S3FileRepositoryService fileRepositoryService) {
         this.fileRepositoryService = fileRepositoryService;
     }
 

@@ -15,10 +15,11 @@ aws:
   region: ap-southeast-2
   s3:
     mock: false
-    bucket:
-      name: campidelli-file-storage-service-bucket
-      region: ap-southeast-2
+    bucket: campidelli-file-storage-service-bucket
     upload:
       maxThreads: 3
       multipart:
         threshold: 1000000 # 1MB
+    download:
+      throughputInGbps: 20.0
+      minimumPartSizeInMb: 8
