@@ -1,23 +1,24 @@
 package campidelli.file.storage.service;
 
 import campidelli.file.storage.config.S3Properties;
+import campidelli.file.storage.dto.FileDownload;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
-import software.amazon.awssdk.core.ResponseInputStream;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import software.amazon.awssdk.core.async.AsyncRequestBody;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
+import software.amazon.awssdk.core.async.ResponsePublisher;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
-import software.amazon.awssdk.services.s3.model.DeleteObjectResponse;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.PutObjectResponse;
-import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
+import software.amazon.awssdk.transfer.s3.model.Upload;
+import software.amazon.awssdk.transfer.s3.model.UploadRequest;
+import software.amazon.awssdk.transfer.s3.progress.LoggingTransferListener;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.io.InputStream;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 
@@ -38,40 +39,78 @@ public class S3AsyncFileRepositoryService {
         this.s3Properties = s3Properties;
     }
 
-    public CompletableFuture<List<String>> listFiles() {
-        return s3AsyncClient.listObjects(request -> request.bucket(s3Properties.getBucket()))
-                .thenCompose(listObjectsResponse -> {
-                    if (listObjectsResponse == null) {
-                        log.warn("Couldn't list the S3 files.");
-                        return CompletableFuture.completedFuture(new ArrayList<>());
-                    }
-                    return CompletableFuture.completedFuture(
-                            listObjectsResponse.contents().stream()
-                                .map(S3Object::key)
-                                .toList());
-                });
+    public Flux<String> listFiles() {
+        return Flux.create((emitter) -> {
+            CompletableFuture<ListObjectsResponse> future = s3AsyncClient.listObjects(
+                    request -> request.bucket(s3Properties.getBucket()));
+            future.whenComplete((response, throwable) -> {
+                if (throwable == null) {
+                    response.contents().stream()
+                            .map(S3Object::key)
+                            .forEach(emitter::next);
+                }
+                emitter.complete();
+            });
+        });
     }
 
-    public CompletableFuture<ResponseInputStream<GetObjectResponse>> getFile(String id) {
-        return s3AsyncClient.getObject(request -> request.bucket(s3Properties.getBucket()).key(id),
-                AsyncResponseTransformer.toBlockingInputStream());
+    public Mono<FileDownload> getFile(String id) {
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(s3Properties.getBucket())
+                .key(id)
+                .build();
+
+        CompletableFuture<ResponsePublisher<GetObjectResponse>> future = s3AsyncClient.getObject(getObjectRequest,
+                AsyncResponseTransformer.toPublisher());
+
+        return Mono.fromFuture(future)
+                .map(response -> FileDownload.builder()
+                        .name(getMetadataItem(response.response(), "filename", id))
+                        .type(response.response().contentType())
+                        .length(response.response().contentLength())
+                        .content(Flux.from(response))
+                        .build());
     }
 
-    public CompletableFuture<PutObjectResponse> saveFile(MultipartFile file) {
-        try {
-            AsyncRequestBody asyncRequestBody = AsyncRequestBody.fromInputStream(
-                    file.getInputStream(), file.getSize(), Executors.newSingleThreadExecutor());
-
-            return s3AsyncClient.putObject(
-                    request -> request.bucket(s3Properties.getBucket()).key(file.getOriginalFilename()),
-                    asyncRequestBody);
-        } catch (IOException e) {
-            log.error("Error reading the file input stream.", e);
-            throw new RuntimeException(e);
+    private String getMetadataItem(GetObjectResponse sdkResponse, String key, String defaultValue) {
+        for (Map.Entry<String, String> entry : sdkResponse.metadata().entrySet()) {
+            if (entry.getKey().equalsIgnoreCase(key)) {
+                return entry.getValue();
+            }
         }
+        return defaultValue;
     }
 
-    public CompletableFuture<DeleteObjectResponse> deleteFile(String id) {
-        return s3AsyncClient.deleteObject(request -> request.bucket(s3Properties.getBucket()).key(id));
+    public Mono<Void> saveFile(InputStream stream, String type, Long length, String id) {
+        AsyncRequestBody asyncRequestBody = AsyncRequestBody.fromInputStream(
+                stream, length, Executors.newSingleThreadExecutor());
+
+        PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                .bucket(s3Properties.getBucket())
+                .key(id)
+                .contentType(type)
+                .build();
+
+        UploadRequest uploadRequest = UploadRequest.builder()
+                .putObjectRequest(putObjectRequest)
+                .requestBody(asyncRequestBody)
+                .addTransferListener(LoggingTransferListener.create())
+                .build();
+
+        Upload upload = transferManager.upload(uploadRequest);
+
+        return Mono.fromFuture(upload.completionFuture())
+                .map(completedUpload -> completedUpload.response())
+                .handle((response, sink) -> {
+                    if (response.sdkHttpResponse() == null || !response.sdkHttpResponse().isSuccessful()) {
+                        sink.error(new RuntimeException(response.sdkHttpResponse().toString()));
+                    }
+                }).then();
+    }
+
+    public Mono<Void> deleteFile(String id) {
+        CompletableFuture<DeleteObjectResponse> future = s3AsyncClient.deleteObject(
+                request -> request.bucket(s3Properties.getBucket()).key(id));
+        return Mono.fromFuture(future).then();
     }
 }
