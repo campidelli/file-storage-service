@@ -1,6 +1,7 @@
 package campidelli.file.storage.config;
 
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
@@ -10,12 +11,22 @@ import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.services.s3.S3CrtAsyncClientBuilder;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 
 import static software.amazon.awssdk.transfer.s3.SizeConstant.MB;
 
 @Configuration
+@EnableConfigurationProperties(S3Properties.class)
 public class S3Configuration {
+
+    private final S3Properties s3Properties;
+
+    @Autowired
+    public S3Configuration(S3Properties s3Properties) {
+        this.s3Properties = s3Properties;
+    }
 
     @Bean
     public SdkHttpClient httpClient() {
@@ -29,37 +40,41 @@ public class S3Configuration {
     }
 
     @Bean
-    public Region region(@Value("${aws.region}") String region) {
-        return Region.of(region);
+    public Region region() {
+        return Region.of(s3Properties.getRegion());
     }
 
     @Bean
     public S3Client s3Client(AwsCredentialsProvider credentialsProvider,
                              Region region,
                              SdkHttpClient httpClient) {
-        return S3Client.builder()
+        S3ClientBuilder builder = S3Client.builder()
                 .credentialsProvider(credentialsProvider)
                 .region(region)
-                .httpClient(httpClient)
-                .build();
+                .httpClient(httpClient);
+        if (s3Properties.getEndpoint() != null) {
+            builder = builder.endpointOverride(s3Properties.getEndpoint());
+        }
+        return builder.build();
     }
 
     @Bean
     public S3AsyncClient s3asyncClient(AwsCredentialsProvider credentialsProvider,
-                                       Region region,
-                                       @Value("${aws.s3.download.throughputInGbps}") Double throughputInGbps,
-                                       @Value("${aws.s3.download.minimumPartSizeInMb}") Long minimumPartSizeInMb) {
-        return S3AsyncClient.crtBuilder()
-                    .credentialsProvider(credentialsProvider)
-                    .region(region)
-                    .targetThroughputInGbps(throughputInGbps)
-                    .minimumPartSizeInBytes(minimumPartSizeInMb * MB)
-                    .build();
+                                       Region region) {
+        S3CrtAsyncClientBuilder builder = S3AsyncClient.crtBuilder()
+                .credentialsProvider(credentialsProvider)
+                .region(region)
+                .targetThroughputInGbps(s3Properties.getMultipart().getThroughputInGbps())
+                .minimumPartSizeInBytes(s3Properties.getMultipart().getMinimumPartSizeInMb() * MB);
+        if (s3Properties.getEndpoint() != null) {
+            builder = builder.endpointOverride(s3Properties.getEndpoint());
+        }
+        return builder.build();
     }
 
     @Bean
     public S3TransferManager transferManager(S3AsyncClient s3AsyncClient) {
-        return  S3TransferManager.builder()
+        return S3TransferManager.builder()
                     .s3Client(s3AsyncClient)
                     .build();
     }
