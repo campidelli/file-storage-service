@@ -54,6 +54,7 @@ public class S3Configuration {
                 .httpClient(httpClient);
         if (s3Properties.getEndpoint() != null) {
             builder = builder.endpointOverride(s3Properties.getEndpoint());
+            builder.forcePathStyle(true);
         }
         return builder.build();
     }
@@ -68,6 +69,7 @@ public class S3Configuration {
                 .minimumPartSizeInBytes(s3Properties.getMultipart().getMinimumPartSizeInMb() * MB);
         if (s3Properties.getEndpoint() != null) {
             builder = builder.endpointOverride(s3Properties.getEndpoint());
+            builder.forcePathStyle(true);
         }
         return builder.build();
     }
