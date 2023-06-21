@@ -42,7 +42,7 @@ public class S3AsyncFileRepositoryService {
     public Flux<String> listFiles() {
         return Flux.create((emitter) -> {
             CompletableFuture<ListObjectsResponse> future = s3AsyncClient.listObjects(
-                    request -> request.bucket(s3Properties.getBucket()));
+                    request -> request.bucket(s3Properties.bucket()));
             future.whenComplete((response, throwable) -> {
                 if (throwable == null) {
                     response.contents().stream()
@@ -56,7 +56,7 @@ public class S3AsyncFileRepositoryService {
 
     public Mono<FileDownload> getFile(String id) {
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-                .bucket(s3Properties.getBucket())
+                .bucket(s3Properties.bucket())
                 .key(id)
                 .build();
 
@@ -83,7 +83,7 @@ public class S3AsyncFileRepositoryService {
 
     public Mono<Void> saveFile(Flux<DataBuffer> dataBufferFlux, String type, Long length, String id) {
         PutObjectRequest putObjectRequest = PutObjectRequest.builder()
-                .bucket(s3Properties.getBucket())
+                .bucket(s3Properties.bucket())
                 .key(id)
                 .contentLength(length)
                 .contentType(type)
@@ -111,7 +111,7 @@ public class S3AsyncFileRepositoryService {
 
     public Mono<Void> deleteFile(String id) {
         CompletableFuture<DeleteObjectResponse> future = s3AsyncClient.deleteObject(
-                request -> request.bucket(s3Properties.getBucket()).key(id));
+                request -> request.bucket(s3Properties.bucket()).key(id));
         return Mono.fromFuture(future).then();
     }
 }

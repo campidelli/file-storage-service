@@ -21,7 +21,7 @@ public class S3BucketRegistry implements InitializingBean {
 
     @Override
     public void afterPropertiesSet() {
-        if (s3Properties.isCreateBucketIfNotExist()) {
+        if (s3Properties.createBucketIfNotExist()) {
             s3Service.createBucketIfNotExists();
         }
     }
