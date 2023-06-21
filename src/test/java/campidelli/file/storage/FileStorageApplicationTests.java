@@ -61,41 +61,32 @@ public class FileStorageApplicationTests {
 		MultipartBodyBuilder multipartBodyBuilder = new MultipartBodyBuilder();
 		multipartBodyBuilder.part("file", new ClassPathResource(FILE_NAME));
 
-		try {
-			client.post()
-					.uri("/v1/async/file")
-					.contentType(MediaType.MULTIPART_FORM_DATA)
-					.body(BodyInserters.fromMultipartData(multipartBodyBuilder.build()))
-					.exchange()
-					.expectStatus().is2xxSuccessful();
-
-			client.get()
-					.uri("/v1/async/file")
-					.exchange()
-					.expectStatus()
-					.is2xxSuccessful()
-					.expectHeader()
-					.contentType(MediaType.APPLICATION_JSON)
-					.expectBody()
-					.jsonPath("$.length()").isEqualTo(1)
-					.jsonPath("$[0]").isEqualTo(FILE_NAME);
-		} finally {
-			System.out.println(s3Mock.getLogs());
-		}
+		client.post()
+				.uri("/v1/async/file")
+				.contentType(MediaType.MULTIPART_FORM_DATA)
+				.body(BodyInserters.fromMultipartData(multipartBodyBuilder.build()))
+				.exchange()
+				.expectStatus().is2xxSuccessful();
 	}
-//
-//	@Test
-//	@Order(2)
-//	public void testListFiles() {
-//		client.get()
-//				.uri("/v1/async/file/")
-//				.exchange()
-//				.expectStatus()
-//				.is2xxSuccessful()
-//				.expectHeader()
-//				.contentType(MediaType.APPLICATION_JSON)
-//				.expectBody()
-//				.jsonPath("$.length()").isEqualTo(1)
-//				.jsonPath("$[0]").isEqualTo(FILE_NAME);
-//	}
+
+	@Test
+	@Order(2)
+	public void testListFiles() {
+		client.get()
+				.uri("/v1/async/file/")
+				.exchange()
+				.expectStatus()
+				.is2xxSuccessful()
+				.expectHeader()
+				.contentType(MediaType.APPLICATION_JSON)
+				.expectBody()
+				.jsonPath("$.length()").isEqualTo(1)
+				.jsonPath("$[0]").isEqualTo(FILE_NAME);
+	}
+
+	@Test
+	@Order(3)
+	public void logS3MockContainer() {
+		log.info(s3Mock.getLogs());
+	}
 }
