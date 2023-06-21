@@ -1,6 +1,7 @@
 package campidelli.file.storage;
 
 import com.adobe.testing.s3mock.testcontainers.S3MockContainer;
+import java.io.File;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
@@ -21,6 +22,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.shaded.com.google.common.io.Files;
 
 @ActiveProfiles("test")
 @AutoConfigureWebTestClient(timeout = "36000")
@@ -36,11 +38,12 @@ public class FileStorageApplicationTests {
 	private int port;
 
 	private WebTestClient client;
-
+	private static final File tempDir = Files.createTempDir();
 	@Container
 	private static final S3MockContainer s3Mock = new S3MockContainer("2.12.2")
 			.withValidKmsKeys("arn:aws:kms:us-east-1:1234567890:key/valid-test-key-ref")
 			.withRetainFilesOnExit(true)
+			.withVolumeAsRoot(tempDir.getAbsolutePath())
 			.withEnv("debug", "true");
 
 	@DynamicPropertySource
@@ -50,6 +53,7 @@ public class FileStorageApplicationTests {
 
 	@BeforeEach
 	public void setup() {
+		log.info("S3Mock root path: {}", tempDir.getAbsolutePath());
 		client = WebTestClient.bindToServer()
 				.baseUrl("http://localhost:" + this.port)
 				.build();

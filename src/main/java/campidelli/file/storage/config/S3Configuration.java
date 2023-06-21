@@ -41,7 +41,7 @@ public class S3Configuration {
 
     @Bean
     public Region region() {
-        return Region.of(s3Properties.getRegion());
+        return Region.of(s3Properties.region());
     }
 
     @Bean
@@ -52,8 +52,9 @@ public class S3Configuration {
                 .credentialsProvider(credentialsProvider)
                 .region(region)
                 .httpClient(httpClient);
-        if (s3Properties.getEndpoint() != null) {
-            builder = builder.endpointOverride(s3Properties.getEndpoint());
+        if (s3Properties.endpoint() != null) {
+            builder.endpointOverride(s3Properties.endpoint());
+            builder.forcePathStyle(true);
         }
         return builder.build();
     }
@@ -64,10 +65,11 @@ public class S3Configuration {
         S3CrtAsyncClientBuilder builder = S3AsyncClient.crtBuilder()
                 .credentialsProvider(credentialsProvider)
                 .region(region)
-                .targetThroughputInGbps(s3Properties.getMultipart().getThroughputInGbps())
-                .minimumPartSizeInBytes(s3Properties.getMultipart().getMinimumPartSizeInMb() * MB);
-        if (s3Properties.getEndpoint() != null) {
-            builder = builder.endpointOverride(s3Properties.getEndpoint());
+                .targetThroughputInGbps(s3Properties.multipart().throughputInGbps())
+                .minimumPartSizeInBytes(s3Properties.multipart().minimumPartSizeInMb() * MB);
+        if (s3Properties.endpoint() != null) {
+            builder.endpointOverride(s3Properties.endpoint());
+            builder.forcePathStyle(true);
         }
         return builder.build();
     }

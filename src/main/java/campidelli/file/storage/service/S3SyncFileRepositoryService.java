@@ -32,16 +32,16 @@ public class S3SyncFileRepositoryService {
 
     public void createBucketIfNotExists() {
         try {
-            s3Client.headBucket(request -> request.bucket(s3Properties.getBucket()));
-            log.info("S3 bucket '{}' found.", s3Properties.getBucket());
+            s3Client.headBucket(request -> request.bucket(s3Properties.bucket()));
+            log.info("S3 bucket '{}' found.", s3Properties.bucket());
         } catch (NoSuchBucketException e) {
-            log.info("S3 bucket '{}' not found. Creating.", s3Properties.getBucket());
-            s3Client.createBucket(request -> request.bucket(s3Properties.getBucket()));
+            log.info("S3 bucket '{}' not found. Creating.", s3Properties.bucket());
+            s3Client.createBucket(request -> request.bucket(s3Properties.bucket()));
         }
     }
 
     public List<String> listFiles() {
-        ListObjectsResponse listObjectsResponse = s3Client.listObjects(request -> request.bucket(s3Properties.getBucket()));
+        ListObjectsResponse listObjectsResponse = s3Client.listObjects(request -> request.bucket(s3Properties.bucket()));
         if (listObjectsResponse == null) {
             log.warn("Couldn't list the S3 files.");
             return new ArrayList<String>();
@@ -52,13 +52,13 @@ public class S3SyncFileRepositoryService {
     }
 
     public ResponseInputStream<GetObjectResponse> getFile(String id) {
-        return s3Client.getObject(request -> request.bucket(s3Properties.getBucket()).key(id));
+        return s3Client.getObject(request -> request.bucket(s3Properties.bucket()).key(id));
     }
 
     public void saveFile(MultipartFile file) {
         try {
             RequestBody requestBody = RequestBody.fromInputStream(file.getInputStream(), file.getSize());
-            s3Client.putObject(request -> request.bucket(s3Properties.getBucket()).key(file.getOriginalFilename()), requestBody);
+            s3Client.putObject(request -> request.bucket(s3Properties.bucket()).key(file.getOriginalFilename()), requestBody);
         } catch (IOException e) {
             log.error("Error reading the file input stream.", e);
             throw new RuntimeException(e);
@@ -66,6 +66,6 @@ public class S3SyncFileRepositoryService {
     }
 
     public void deleteFile(String id) {
-        s3Client.deleteObject(request -> request.bucket(s3Properties.getBucket()).key(id));
+        s3Client.deleteObject(request -> request.bucket(s3Properties.bucket()).key(id));
     }
 }
