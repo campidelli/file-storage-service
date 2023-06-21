@@ -20,7 +20,8 @@ server:
   error:
     include-message: always
 
-logging:
-  level:
-    root: info
-    campidelli: warn
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"

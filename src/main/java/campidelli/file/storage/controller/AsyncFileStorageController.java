@@ -7,14 +7,17 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
+
+import static java.net.URLConnection.guessContentTypeFromName;
+import static org.springframework.http.HttpStatus.BAD_REQUEST;
 
 @RestController
 @RequestMapping("/v1/async/file")
@@ -28,22 +31,20 @@ public class AsyncFileStorageController {
         this.fileRepositoryService = fileRepositoryService;
     }
 
-    @GetMapping(value = "/", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.OK)
     public Mono<List<String>> listFiles() {
         return fileRepositoryService.listFiles().collectList();
     }
 
-    @PostMapping(value = "/", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.OK)
-    public Mono<Void> uploadFile(@RequestParam("file") MultipartFile file) {
-        try {
-            return fileRepositoryService.saveFile(file.getInputStream(), file.getContentType(), file.getSize(),
-                    file.getOriginalFilename());
-        } catch (IOException e) {
-            log.error("Error while reading the multipart file input stream.", e);
-            throw new RuntimeException(e);
+    public Mono<Void> uploadFile(@RequestHeader HttpHeaders headers, @RequestPart("file") FilePart file) {
+        long length = headers.getContentLength() < 0 ? file.headers().getContentLength() : headers.getContentLength();
+        if (length < 0) {
+            throw new ResponseStatusException(BAD_REQUEST, "Header Content-Length must informed.");
         }
+        return fileRepositoryService.saveFile(file.content(), guessContentTypeFromName(file.filename()), length, file.filename());
     }
 
     @GetMapping(value = "/{id}")

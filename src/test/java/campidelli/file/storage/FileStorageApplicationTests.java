@@ -2,38 +2,40 @@ package campidelli.file.storage;
 
 import com.adobe.testing.s3mock.testcontainers.S3MockContainer;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
+import org.springframework.test.web.reactive.server.WebTestClient;
+import org.springframework.web.reactive.function.BodyInserters;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import static org.springframework.test.util.AssertionErrors.assertNotNull;
-
 @ActiveProfiles("test")
 @AutoConfigureWebTestClient(timeout = "36000")
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@TestMethodOrder(OrderAnnotation.class)
 @Testcontainers
 @Slf4j
-class FileStorageApplicationTests {
+public class FileStorageApplicationTests {
+
+	private static final String FILE_NAME = "the-return-of-sherlock-holmes.pdf";
 
 	@LocalServerPort
-	private int serverPort;
+	private int port;
 
-	@Autowired
-	private TestRestTemplate restTemplate;
+	private WebTestClient client;
 
 	@Container
 	private static final S3MockContainer s3Mock = new S3MockContainer("2.12.2")
@@ -46,19 +48,54 @@ class FileStorageApplicationTests {
 		registry.add("aws.s3.endpoint", s3Mock::getHttpEndpoint);
 	}
 
-	@Test
-	void whenUploadSingleFile_thenSuccess1() throws Exception {
-		HttpHeaders headers = new HttpHeaders();
-		headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-
-		MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-		body.add("file", new ClassPathResource("the-return-of-sherlock-holmes.pdf"));
-
-		HttpEntity<MultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
-
-		String url = "http://localhost:" + serverPort + "/v1/async/file/";
-
-		Object result = restTemplate.postForObject(url, request, Object.class);
-		assertNotNull("Result must not be null.", result);
+	@BeforeEach
+	public void setup() {
+		client = WebTestClient.bindToServer()
+				.baseUrl("http://localhost:" + this.port)
+				.build();
 	}
+
+	@Test
+	@Order(1)
+	public void testUpload() {
+		MultipartBodyBuilder multipartBodyBuilder = new MultipartBodyBuilder();
+		multipartBodyBuilder.part("file", new ClassPathResource(FILE_NAME));
+
+		try {
+			client.post()
+					.uri("/v1/async/file")
+					.contentType(MediaType.MULTIPART_FORM_DATA)
+					.body(BodyInserters.fromMultipartData(multipartBodyBuilder.build()))
+					.exchange()
+					.expectStatus().is2xxSuccessful();
+
+			client.get()
+					.uri("/v1/async/file")
+					.exchange()
+					.expectStatus()
+					.is2xxSuccessful()
+					.expectHeader()
+					.contentType(MediaType.APPLICATION_JSON)
+					.expectBody()
+					.jsonPath("$.length()").isEqualTo(1)
+					.jsonPath("$[0]").isEqualTo(FILE_NAME);
+		} finally {
+			System.out.println(s3Mock.getLogs());
+		}
+	}
+//
+//	@Test
+//	@Order(2)
+//	public void testListFiles() {
+//		client.get()
+//				.uri("/v1/async/file/")
+//				.exchange()
+//				.expectStatus()
+//				.is2xxSuccessful()
+//				.expectHeader()
+//				.contentType(MediaType.APPLICATION_JSON)
+//				.expectBody()
+//				.jsonPath("$.length()").isEqualTo(1)
+//				.jsonPath("$[0]").isEqualTo(FILE_NAME);
+//	}
 }

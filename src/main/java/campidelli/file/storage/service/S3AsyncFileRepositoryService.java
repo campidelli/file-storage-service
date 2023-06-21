@@ -4,6 +4,7 @@ import campidelli.file.storage.config.S3Properties;
 import campidelli.file.storage.dto.FileDownload;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -17,10 +18,9 @@ import software.amazon.awssdk.transfer.s3.model.Upload;
 import software.amazon.awssdk.transfer.s3.model.UploadRequest;
 import software.amazon.awssdk.transfer.s3.progress.LoggingTransferListener;
 
-import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
 
 @Service
 @Slf4j
@@ -81,19 +81,20 @@ public class S3AsyncFileRepositoryService {
         return defaultValue;
     }
 
-    public Mono<Void> saveFile(InputStream stream, String type, Long length, String id) {
-        AsyncRequestBody asyncRequestBody = AsyncRequestBody.fromInputStream(
-                stream, length, Executors.newSingleThreadExecutor());
-
+    public Mono<Void> saveFile(Flux<DataBuffer> dataBufferFlux, String type, Long length, String id) {
         PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                 .bucket(s3Properties.getBucket())
                 .key(id)
+                .contentLength(length)
                 .contentType(type)
                 .build();
 
+        Flux<ByteBuffer> byteBufferFlux = dataBufferFlux
+                .flatMap(dataBuffer -> Flux.fromIterable(dataBuffer::readableByteBuffers));
+
         UploadRequest uploadRequest = UploadRequest.builder()
                 .putObjectRequest(putObjectRequest)
-                .requestBody(asyncRequestBody)
+                .requestBody(AsyncRequestBody.fromPublisher(byteBufferFlux))
                 .addTransferListener(LoggingTransferListener.create())
                 .build();
 
