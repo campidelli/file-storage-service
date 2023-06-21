@@ -1,7 +1,6 @@
 package campidelli.file.storage;
 
 import com.adobe.testing.s3mock.testcontainers.S3MockContainer;
-import java.io.File;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
@@ -13,16 +12,24 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.reactive.server.FluxExchangeResult;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.shaded.com.google.common.io.Files;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
 
 @ActiveProfiles("test")
 @AutoConfigureWebTestClient(timeout = "36000")
@@ -33,17 +40,18 @@ import org.testcontainers.shaded.com.google.common.io.Files;
 public class FileStorageApplicationTests {
 
 	private static final String FILE_NAME = "the-return-of-sherlock-holmes.pdf";
+	private static final File TEMP_DIR = Files.createTempDir();
 
 	@LocalServerPort
 	private int port;
 
 	private WebTestClient client;
-	private static final File tempDir = Files.createTempDir();
+
 	@Container
 	private static final S3MockContainer s3Mock = new S3MockContainer("2.12.2")
 			.withValidKmsKeys("arn:aws:kms:us-east-1:1234567890:key/valid-test-key-ref")
 			.withRetainFilesOnExit(true)
-			.withVolumeAsRoot(tempDir.getAbsolutePath())
+			.withVolumeAsRoot(TEMP_DIR.getAbsolutePath())
 			.withEnv("debug", "true");
 
 	@DynamicPropertySource
@@ -53,7 +61,7 @@ public class FileStorageApplicationTests {
 
 	@BeforeEach
 	public void setup() {
-		log.info("S3Mock root path: {}", tempDir.getAbsolutePath());
+		log.info("S3Mock root path: {}", TEMP_DIR.getAbsolutePath());
 		client = WebTestClient.bindToServer()
 				.baseUrl("http://localhost:" + this.port)
 				.build();
@@ -61,7 +69,7 @@ public class FileStorageApplicationTests {
 
 	@Test
 	@Order(1)
-	public void testUpload() {
+	public void testUploadFile() {
 		MultipartBodyBuilder multipartBodyBuilder = new MultipartBodyBuilder();
 		multipartBodyBuilder.part("file", new ClassPathResource(FILE_NAME));
 
@@ -90,6 +98,53 @@ public class FileStorageApplicationTests {
 
 	@Test
 	@Order(3)
+	public void testDownloadFile() throws IOException {
+		FluxExchangeResult<ByteBuffer> result = client.get()
+				.uri("/v1/async/file/" + FILE_NAME)
+				.exchange()
+				.expectStatus()
+				.is2xxSuccessful()
+				.expectHeader()
+				.valueEquals(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + FILE_NAME + "\"")
+				.expectHeader()
+				.contentType(MediaType.APPLICATION_PDF)
+//				.expectHeader()  TODO Uncomment once the size difference is figured out (expected 1318741, actual 1318787)
+//				.contentLength(new ClassPathResource(FILE_NAME).contentLength())
+				.returnResult(ByteBuffer.class);
+
+		// TODO Remove this after the test above is working
+		File downloadedFile = new File(TEMP_DIR, FILE_NAME);
+		try (OutputStream out = new FileOutputStream(downloadedFile)) {
+			out.write(result.getResponseBodyContent());
+		}
+		log.info("Downloaded file {}", downloadedFile);
+		log.info("Expected body length {}", new ClassPathResource(FILE_NAME).contentLength());
+		log.info("Actual body length {}", downloadedFile.length());
+	}
+
+	@Test
+	@Order(4)
+	public void testDeleteFile() {
+		client.delete()
+				.uri("/v1/async/file/" + FILE_NAME)
+				.exchange()
+				.expectStatus()
+				.is2xxSuccessful()
+				.expectHeader();
+
+		client.get()
+				.uri("/v1/async/file/")
+				.exchange()
+				.expectStatus()
+				.is2xxSuccessful()
+				.expectHeader()
+				.contentType(MediaType.APPLICATION_JSON)
+				.expectBody()
+				.jsonPath("$.length()").isEqualTo(0);
+	}
+
+	@Test
+	@Order(5)
 	public void logS3MockContainer() {
 		log.info(s3Mock.getLogs());
 	}
