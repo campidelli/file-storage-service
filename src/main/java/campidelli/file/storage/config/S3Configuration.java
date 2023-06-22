@@ -70,6 +70,7 @@ public class S3Configuration {
         if (s3Properties.endpoint() != null) {
             builder.endpointOverride(s3Properties.endpoint());
             builder.forcePathStyle(true);
+            builder.checksumValidationEnabled(false);
         }
         return builder.build();
     }

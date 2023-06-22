@@ -108,18 +108,9 @@ public class FileStorageApplicationTests {
 				.valueEquals(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + FILE_NAME + "\"")
 				.expectHeader()
 				.contentType(MediaType.APPLICATION_PDF)
-//				.expectHeader()  TODO Uncomment once the size difference is figured out (expected 1318741, actual 1318787)
-//				.contentLength(new ClassPathResource(FILE_NAME).contentLength())
+				.expectHeader()
+				.contentLength(new ClassPathResource(FILE_NAME).contentLength())
 				.returnResult(ByteBuffer.class);
-
-		// TODO Remove this after the test above is working
-		File downloadedFile = new File(TEMP_DIR, FILE_NAME);
-		try (OutputStream out = new FileOutputStream(downloadedFile)) {
-			out.write(result.getResponseBodyContent());
-		}
-		log.info("Downloaded file {}", downloadedFile);
-		log.info("Expected body length {}", new ClassPathResource(FILE_NAME).contentLength());
-		log.info("Actual body length {}", downloadedFile.length());
 	}
 
 	@Test
