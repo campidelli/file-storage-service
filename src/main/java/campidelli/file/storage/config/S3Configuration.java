@@ -51,10 +51,10 @@ public class S3Configuration {
         S3ClientBuilder builder = S3Client.builder()
                 .credentialsProvider(credentialsProvider)
                 .region(region)
+                .forcePathStyle(true)
                 .httpClient(httpClient);
         if (s3Properties.endpoint() != null) {
             builder.endpointOverride(s3Properties.endpoint());
-            builder.forcePathStyle(true);
         }
         return builder.build();
     }
@@ -65,12 +65,12 @@ public class S3Configuration {
         S3CrtAsyncClientBuilder builder = S3AsyncClient.crtBuilder()
                 .credentialsProvider(credentialsProvider)
                 .region(region)
+                .forcePathStyle(true)
                 .targetThroughputInGbps(s3Properties.multipart().throughputInGbps())
-                .minimumPartSizeInBytes(s3Properties.multipart().minimumPartSizeInMb() * MB);
+                .minimumPartSizeInBytes(s3Properties.multipart().minimumPartSizeInMb() * MB)
+                .checksumValidationEnabled(!s3Properties.checksumValidationDisabled());
         if (s3Properties.endpoint() != null) {
             builder.endpointOverride(s3Properties.endpoint());
-            builder.forcePathStyle(true);
-            builder.checksumValidationEnabled(false);
         }
         return builder.build();
     }

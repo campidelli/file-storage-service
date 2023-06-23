@@ -9,6 +9,7 @@ public record S3Properties(String region,
                            URI endpoint,
                            String bucket,
                            boolean createBucketIfNotExist,
+                           boolean checksumValidationDisabled,
                            Multipart multipart) {
 
   public record Multipart(

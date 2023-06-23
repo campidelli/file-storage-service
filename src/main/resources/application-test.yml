@@ -1,3 +1,4 @@
 aws:
   s3:
     endpoint: http://localhost:9000
+    checksumValidationDisabled: true
