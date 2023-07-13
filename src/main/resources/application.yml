@@ -11,6 +11,8 @@ aws:
     region: ap-southeast-2
     bucket: campidelli-file-storage-service-bucket
     createBucketIfNotExist : true
+    preSignedURLDuration: 5m
+    maximumObjectSizeInMb: 50
     multipart:
       throughputInGbps: 20.0
       minimumPartSizeInMb: 8

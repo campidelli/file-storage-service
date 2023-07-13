@@ -1,98 +1,151 @@
 package campidelli.file.storage.service;
 
 import campidelli.file.storage.config.S3Properties;
-import org.springframework.beans.factory.annotation.Autowired;
+import campidelli.file.storage.dto.PreSignedURL;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
-import software.amazon.awssdk.awscore.presigner.PresignedRequest;
-import software.amazon.awssdk.core.pagination.sync.SdkIterable;
-import software.amazon.awssdk.http.ContentStreamProvider;
-import software.amazon.awssdk.http.HttpExecuteRequest;
-import software.amazon.awssdk.http.HttpExecuteResponse;
-import software.amazon.awssdk.http.SdkHttpClient;
-import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
-import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.CreateMultipartUploadPresignRequest;
-import software.amazon.awssdk.services.s3.presigner.model.PresignedCreateMultipartUploadRequest;
-import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
-import software.amazon.awssdk.utils.StringInputStream;
 
-import java.io.IOException;
+import java.net.URL;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.Optional;
 
+@Slf4j
 @Service
-public class S3AsyncMultipartFileRepositoryService {
+public
+class S3AsyncMultipartFileRepositoryService {
 
-    private final S3Client s3Client;
-    private final S3Presigner preSigner;
-    private final SdkHttpClient httpClient;
+    private final S3AsyncClient s3Client;
     private final S3Properties s3Properties;
+    private final S3Presigner s3Presigner;
 
-    @Autowired
-    public S3AsyncMultipartFileRepositoryService(S3Client s3Client,
-                                                 S3Presigner preSigner,
-                                                 SdkHttpClient httpClient,
-                                                 S3Properties s3Properties) {
+    public S3AsyncMultipartFileRepositoryService(S3AsyncClient s3Client,
+                                                 S3Properties s3Properties,
+                                                 S3Presigner s3Presigner) {
         this.s3Client = s3Client;
-        this.preSigner = preSigner;
-        this.httpClient = httpClient;
         this.s3Properties = s3Properties;
+        this.s3Presigner = s3Presigner;
     }
 
-    public List<String> generatePreSignedURLs(String key) {
+    public URL getPreSignedGetObjectURL(GetObjectRequest getObjectRequest, Duration duration) {
+        GetObjectPresignRequest preSignedGetObjectRequest = GetObjectPresignRequest.builder()
+                .signatureDuration(duration) // Set the expiration time for the URL
+                .getObjectRequest(getObjectRequest)
+                .build();
+        // Get the pre-signed URL
+        return s3Presigner.presignGetObject(preSignedGetObjectRequest).url();
+    }
 
-        CreateMultipartUploadRequest createMultipartUploadRequest = CreateMultipartUploadRequest.builder()
-                .bucket(s3Properties.bucket())
+    public URL getPreSignedOPutObjectURL(PutObjectRequest putObjectRequest, Duration duration) {
+        PutObjectPresignRequest preSignPutObjectRequest = PutObjectPresignRequest.builder()
+                .signatureDuration(duration)
+                .putObjectRequest(putObjectRequest)
+                .build();
+        return s3Presigner.presignPutObject(preSignPutObjectRequest).url();
+    }
+
+    public Mono<List<PreSignedURL>> getPreSignedGetObjectURLs(String bucket, String key) {
+        GetObjectAttributesRequest request = GetObjectAttributesRequest.builder()
+                .bucket(bucket)
                 .key(key)
+                .objectAttributes(ObjectAttributes.OBJECT_SIZE, ObjectAttributes.OBJECT_PARTS)
                 .build();
 
-        CreateMultipartUploadPresignRequest createMultipartUploadPresignRequest = CreateMultipartUploadPresignRequest.builder()
-                .signatureDuration(Duration.ofMinutes(10))
-                .createMultipartUploadRequest(createMultipartUploadRequest)
-                .build();
-
-        PresignedCreateMultipartUploadRequest presignedCreateMultipartUploadRequest =
-                preSigner.presignCreateMultipartUpload(createMultipartUploadPresignRequest);
-
-        HttpExecuteResponse response = execute(presignedCreateMultipartUploadRequest, null);
-        if (!response.httpResponse().isSuccessful()) {
-            throw new RuntimeException("Can't create pre-signed URL for multipart upload.");
-        }
-
-        ListMultipartUploadsRequest listMultipartUploadsRequest = ListMultipartUploadsRequest.builder()
-                .bucket(s3Properties.bucket())
-                .prefix(key)
-                .build();
-
-        SdkIterable<MultipartUpload> uploads = s3Client.listMultipartUploadsPaginator(listMultipartUploadsRequest)
-                .uploads();
-
-        uploads.forEach(u -> {
-            System.out.println(u.uploadId());
-        });
-
-        return new ArrayList<>();
+        return Mono.fromFuture(s3Client.getObjectAttributes(request))
+                .map(response -> getPreSignedGetObjectURLs(bucket, key, response));
     }
 
-    private HttpExecuteResponse execute(PresignedRequest presigned, String payload) {
-        ContentStreamProvider requestPayload = payload == null ? null : () -> new StringInputStream(payload);
-
-        HttpExecuteRequest request = HttpExecuteRequest.builder()
-                .request(presigned.httpRequest())
-                .contentStreamProvider(requestPayload)
-                .build();
-
-        try {
-            return httpClient.prepareRequest(request).call();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+    private List<PreSignedURL> getPreSignedGetObjectURLs(String bucket, String key, GetObjectAttributesResponse response) {
+        if (response.objectParts() != null && response.objectParts().totalPartsCount() > 0) {
+            return getPreSignedGetObjectURLsUsingObjectParts(bucket, key, response.objectParts().totalPartsCount());
         }
+        return getPreSignedGetObjectURLsUsingByteRange(bucket, key, response.objectSize());
+    }
+
+    private List<PreSignedURL> getPreSignedGetObjectURLsUsingObjectParts(String bucket, String key, int numberOfParts) {
+        List<PreSignedURL> result = new ArrayList<>(numberOfParts);
+        for (int partNumber = 1; partNumber <= numberOfParts; partNumber++) {
+            result.add(getPreSignedGetObjectURLObjectParts(bucket, key, partNumber));
+        }
+        return result;
+    }
+
+    private List<PreSignedURL> getPreSignedGetObjectURLsUsingByteRange(String bucket, String key, long objectSize) {
+        int numberOfParts = (int) Math.ceil((double) objectSize / s3Properties.multipart().minimumPartSizeInMb());
+        List<PreSignedURL> result = new ArrayList<>(numberOfParts);
+        for (int partNumber = 1; partNumber <= numberOfParts; partNumber++) {
+            String range = getRange(partNumber, objectSize, s3Properties.multipart().minimumPartSizeInMb());
+            result.add(getPreSignedGetObjectURLUsingByteRange(bucket, key, partNumber, range));
+        }
+        return result;
+    }
+
+    private String getRange(int partNumber, long objectSize, long chunkSize) {
+        long from = calculateRangeFrom(partNumber, chunkSize);
+        long to = calculateRangeTo(partNumber, objectSize < chunkSize ? objectSize : chunkSize);
+        return String.format("bytes=%d-%d",from, to);
+    }
+
+    private long calculateRangeFrom(int partNumber, long chunkSize) {
+        return (partNumber - 1) * chunkSize;
+    }
+
+    private long calculateRangeTo(int partNumber, long chunkSize) {
+        return (partNumber * chunkSize) - 1;
+    }
+
+    private PreSignedURL getPreSignedGetObjectURLObjectParts(String bucket, String key, int partNumber) {
+        return getPreSignedGetObjectURL(bucket, key, partNumber, Optional.empty());
+    }
+
+    private PreSignedURL getPreSignedGetObjectURLUsingByteRange(String bucket, String key, int partNumber, String range) {
+        return getPreSignedGetObjectURL(bucket, key, partNumber, Optional.of(range));
+    }
+
+    private PreSignedURL getPreSignedGetObjectURL(String bucket,
+                                                  String key,
+                                                  int partNumber,
+                                                  Optional<String> range) {
+
+        GetObjectRequest getObjectRequest = makeGetObjectRequest(bucket, key, partNumber, range);
+        GetObjectPresignRequest preSignRequest = makeGetObjectPresignRequest(getObjectRequest);
+        PresignedGetObjectRequest preSignedGetObjectRequest = s3Presigner.presignGetObject(preSignRequest);
+
+        return PreSignedURL.builder()
+                .partNumber(partNumber)
+                .url(preSignedGetObjectRequest.url())
+                .headers(preSignedGetObjectRequest.signedHeaders())
+                .build();
+    }
+
+    private GetObjectRequest makeGetObjectRequest(String bucket,
+                                                  String key,
+                                                  int partNumber,
+                                                  Optional<String> range) {
+        GetObjectRequest.Builder builder = GetObjectRequest.builder()
+                .bucket(bucket)
+                .key(key);
+        if (range.isPresent()) {
+            builder.range(range.get());
+        } else {
+            // We must only use the GET param 'partNumber' for downloading a file
+            // that was uploaded as multipart. In this case 'range' has to be empty.
+            builder.partNumber(partNumber);
+        }
+        return builder.build();
+    }
+
+    private GetObjectPresignRequest makeGetObjectPresignRequest(GetObjectRequest getObjectRequest) {
+        return GetObjectPresignRequest.builder()
+                .signatureDuration(s3Properties.preSignedURLDuration())
+                .getObjectRequest(getObjectRequest).build();
     }
 }

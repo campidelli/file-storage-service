@@ -4,8 +4,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.regions.Region;
@@ -37,6 +39,10 @@ public class S3Configuration {
 
     @Bean
     public AwsCredentialsProvider credentialsProvider() {
+        if (s3Properties.credentials() != null) {
+            AwsBasicCredentials awsBasicCredentials = AwsBasicCredentials.create(s3Properties.credentials().key(), s3Properties.credentials().secret());
+            return StaticCredentialsProvider.create(awsBasicCredentials);
+        }
         return DefaultCredentialsProvider.create();
     }
 

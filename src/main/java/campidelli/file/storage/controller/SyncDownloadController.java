@@ -5,8 +5,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.io.InputStream;
@@ -15,12 +17,12 @@ import java.util.List;
 @RestController
 @RequestMapping("/v1/sync/file")
 @Slf4j
-public class SyncFileStorageController {
+public class SyncDownloadController {
 
     private final S3SyncFileRepositoryService fileRepositoryService;
 
     @Autowired
-    public SyncFileStorageController(S3SyncFileRepositoryService fileRepositoryService) {
+    public SyncDownloadController(S3SyncFileRepositoryService fileRepositoryService) {
         this.fileRepositoryService = fileRepositoryService;
     }
 
@@ -30,13 +32,6 @@ public class SyncFileStorageController {
         ResponseEntity<List<String>> response = ResponseEntity.ok(fileRepositoryService.listFiles());
         log.info("GET '/v1/sync/file' elapsed time: {} ms.", System.currentTimeMillis() - start);
         return response;
-    }
-
-    @PostMapping(value = "/", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public void uploadFile(@RequestParam("file") MultipartFile file) {
-        long start = System.currentTimeMillis();
-        fileRepositoryService.saveFile(file);
-        log.info("POST '/v1/sync/file' elapsed time: {} ms.", System.currentTimeMillis() - start);
     }
 
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -54,12 +49,5 @@ public class SyncFileStorageController {
         };
         log.info("GET '/v1/sync/file/{}' elapsed time: {} ms.", id, System.currentTimeMillis() - start);
         return ResponseEntity.ok(body);
-    }
-
-    @DeleteMapping( "/{id}")
-    public void deleteFile(@PathVariable String id) {
-        long start = System.currentTimeMillis();
-        fileRepositoryService.deleteFile(id);
-        log.info("DELETE '/v1/sync/file/{}' - elapsed time: {} ms.", id, System.currentTimeMillis() - start);
     }
 }

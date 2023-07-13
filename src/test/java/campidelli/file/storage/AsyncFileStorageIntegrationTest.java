@@ -7,11 +7,9 @@ import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
-import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.MultipartBodyBuilder;
@@ -23,22 +21,16 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.shaded.com.google.common.io.Files;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
 @ActiveProfiles("test")
-@AutoConfigureWebTestClient(timeout = "36000")
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 @TestMethodOrder(OrderAnnotation.class)
 @Testcontainers
 @Slf4j
-public class FileStorageApplicationTests {
-
-	private static final String FILE_NAME = "the-return-of-sherlock-holmes.pdf";
-	private static final File TEMP_DIR = Files.createTempDir();
+public class AsyncFileStorageIntegrationTest extends S3MockIntegrationTest {
 
 	@LocalServerPort
 	private int port;
@@ -46,10 +38,10 @@ public class FileStorageApplicationTests {
 	private WebTestClient client;
 
 	@Container
-	private static final S3MockContainer s3Mock = new S3MockContainer("2.12.2")
-			.withValidKmsKeys("arn:aws:kms:us-east-1:1234567890:key/valid-test-key-ref")
+	private static final S3MockContainer s3Mock = new S3MockContainer(S3_MOCK_VERSION)
+			.withValidKmsKeys(TEST_ENC_KEYREF)
+			.withInitialBuckets(INITIAL_BUCKET_NAME)
 			.withRetainFilesOnExit(true)
-			.withVolumeAsRoot(TEMP_DIR.getAbsolutePath())
 			.withEnv("debug", "true");
 
 	@DynamicPropertySource
@@ -59,7 +51,6 @@ public class FileStorageApplicationTests {
 
 	@BeforeEach
 	public void setup() {
-		log.info("S3Mock root path: {}", TEMP_DIR.getAbsolutePath());
 		client = WebTestClient.bindToServer()
 				.baseUrl("http://localhost:" + this.port)
 				.build();
@@ -69,7 +60,7 @@ public class FileStorageApplicationTests {
 	@Order(1)
 	public void testUploadFile() {
 		MultipartBodyBuilder multipartBodyBuilder = new MultipartBodyBuilder();
-		multipartBodyBuilder.part("file", new ClassPathResource(FILE_NAME));
+		multipartBodyBuilder.part("file", getTestFile());
 
 		client.post()
 				.uri("/v1/async/file")
@@ -107,7 +98,7 @@ public class FileStorageApplicationTests {
 				.expectHeader()
 				.contentType(MediaType.APPLICATION_PDF)
 				.expectHeader()
-				.contentLength(new ClassPathResource(FILE_NAME).contentLength())
+				.contentLength(getTestFile().contentLength())
 				.returnResult(ByteBuffer.class);
 	}
 
