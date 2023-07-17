@@ -19,7 +19,7 @@ import static software.amazon.awssdk.http.SdkHttpConfigurationOption.TRUST_ALL_C
 @Slf4j
 public abstract class S3MockIntegrationTest {
 
-    protected static final String S3_MOCK_VERSION = "2.17.0";
+    protected static final String S3_MOCK_VERSION = "3.0.0";
     protected static final String INITIAL_BUCKET_NAME = "campidelli-file-storage-service-bucket";
     protected static final String TEST_ENC_KEYREF =
             "arn:aws:kms:us-east-1:1234567890:key/valid-test-key-ref";

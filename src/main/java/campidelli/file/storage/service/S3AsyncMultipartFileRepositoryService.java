@@ -79,7 +79,8 @@ class S3AsyncMultipartFileRepositoryService {
     }
 
     private List<PreSignedURL> getPreSignedGetObjectURLsUsingByteRange(String bucket, String key, long objectSize) {
-        int numberOfParts = (int) Math.ceil((double) objectSize / s3Properties.multipart().minimumPartSizeInMb());
+        //objectSize is returned in bytes, not MB.
+        int numberOfParts = (int) Math.ceil((double) objectSize / (s3Properties.multipart().minimumPartSizeInMb() * 1024 * 1024));
         List<PreSignedURL> result = new ArrayList<>(numberOfParts);
         for (int partNumber = 1; partNumber <= numberOfParts; partNumber++) {
             String range = getRange(partNumber, objectSize, s3Properties.multipart().minimumPartSizeInMb());
