@@ -2,6 +2,7 @@ package campidelli.file.storage;
 
 import campidelli.file.storage.dto.PreSignedURL;
 import com.adobe.testing.s3mock.testcontainers.S3MockContainer;
+import java.io.File;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,6 +16,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.shaded.com.google.common.io.Files;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.core.sync.ResponseTransformer;
@@ -40,11 +42,12 @@ public class AsyncMultipartDownloadIIntegrationTest extends S3MockIntegrationTes
 	private WebTestClient webTestClient;
 	private S3Client s3Client;
 	private Resource file;
-
+	private static final File tempDir = Files.createTempDir();
 	@Container
 	private static final S3MockContainer s3Mock = new S3MockContainer(S3_MOCK_VERSION)
 			.withValidKmsKeys(TEST_ENC_KEYREF)
 			.withInitialBuckets(INITIAL_BUCKET_NAME)
+			.withVolumeAsRoot(tempDir.getAbsolutePath())
 			.withEnv("debug", "true");
 
 	@DynamicPropertySource
